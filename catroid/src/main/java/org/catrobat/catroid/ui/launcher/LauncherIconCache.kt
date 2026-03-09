@@ -41,6 +41,7 @@ class LauncherIconCache(maxEntries: Int = DEFAULT_MAX_ENTRIES) {
         override fun sizeOf(key: String, value: Bitmap) = 1
     }
 
+    /** Returns the cached icon for [projectDir], or null on a cache miss. */
     fun get(projectDir: File): Bitmap? = lru.get(cacheKey(projectDir))
 
     fun put(projectDir: File, icon: Bitmap) {
