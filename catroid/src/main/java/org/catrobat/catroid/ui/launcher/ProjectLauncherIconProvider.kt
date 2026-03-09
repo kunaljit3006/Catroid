@@ -88,7 +88,7 @@ class ProjectLauncherIconProvider(
     internal fun centreSquareCrop(source: Bitmap, size: Int): Bitmap {
         val width = source.width
         val height = source.height
-        val minDim = Math.min(width, height)
+        val minDim = minOf(width, height)
 
         val left = (width - minDim) / 2
         val top = (height - minDim) / 2
