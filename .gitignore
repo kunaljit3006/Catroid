@@ -70,3 +70,14 @@ fastlane/*
 !fastlane/Fastfile
 !fastlane/staticContent/
 Gemfile
+
+# Debug / build output text files
+build_output.txt
+compile_errors.txt
+compile_errors2.txt
+compile_test_errors.txt
+test_error_info.txt
+test_final.txt
+test_output.txt
+test_output_2.txt
+test_output_3.txt
