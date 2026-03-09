@@ -7,7 +7,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
-import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,7 +35,7 @@ class LauncherIconPreviewDialog : DialogFragment() {
 
         nameTextView.text = projectName
 
-        lifecycleScope.launch {
+        CoroutineScope(Dispatchers.Main).launch {
 
             val icon = withContext(Dispatchers.IO) {
 
