@@ -76,15 +76,20 @@ class ProjectLauncherIconProvider(
 
         // 3. Try first scene sub-directory for screenshots
         if (projectDir.isDirectory) {
-            val firstScene = projectDir.listFiles()?.firstOrNull { it.isDirectory }
-            if (firstScene != null) {
-                val sceneManual = File(firstScene, SCREENSHOT_MANUAL_FILE_NAME)
-                if (sceneManual.exists()) {
-                    bitmapDecoder.decode(sceneManual.absolutePath)?.let { return it }
-                }
-                val sceneAutomatic = File(firstScene, SCREENSHOT_AUTOMATIC_FILE_NAME)
-                if (sceneAutomatic.exists()) {
-                    bitmapDecoder.decode(sceneAutomatic.absolutePath)?.let { return it }
+            val files = projectDir.listFiles()
+            if (files != null) {
+                for (file in files) {
+                    if (file.isDirectory) {
+                        val sceneManual = File(file, SCREENSHOT_MANUAL_FILE_NAME)
+                        if (sceneManual.exists()) {
+                            bitmapDecoder.decode(sceneManual.absolutePath)?.let { return it }
+                        }
+                        val sceneAutomatic = File(file, SCREENSHOT_AUTOMATIC_FILE_NAME)
+                        if (sceneAutomatic.exists()) {
+                            bitmapDecoder.decode(sceneAutomatic.absolutePath)?.let { return it }
+                        }
+                        break // We only check the first directory, matching firstOrNull logic
+                    }
                 }
             }
         }
