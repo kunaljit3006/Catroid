@@ -27,9 +27,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider
 import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.ICON_SIZE_PX
-import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.SCENES_SUBDIR
-import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.SCREENSHOTS_SUBDIR
-import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.THUMBNAIL_FILE_NAME
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -69,44 +66,84 @@ class ProjectLauncherIconProviderTest {
     private fun decoderReturningNull(): ProjectLauncherIconProvider.BitmapDecoder =
         ProjectLauncherIconProvider.BitmapDecoder { null }
 
-    // --- Thumbnail exists ---
+    // ================================================================
+    // RED tests — these expose the screenshot-path bug.
+    // Catroid stores automatic_screenshot.png in the project root,
+    // NOT inside scenes/{scene}/screenshots/.
+    // ================================================================
 
     @Test
-    fun `getIconForProject returns icon when thumbnail exists`() {
-        File(tempDir, THUMBNAIL_FILE_NAME).createNewFile()
+    fun `loadSourceBitmap finds automatic_screenshot in project root`() {
+        // Catroid saves screenshots directly in the project directory
+        File(tempDir, "automatic_screenshot.png").createNewFile()
 
-        val sourceBitmap = createBitmap(200, 200, Color.BLUE)
-        val provider = ProjectLauncherIconProvider(decoderReturning(sourceBitmap))
+        val expected = createBitmap(200, 200, Color.CYAN)
+        val provider = ProjectLauncherIconProvider(decoderReturning(expected))
 
-        val icon = provider.getIconForProject(tempDir)
+        val bitmap = provider.loadSourceBitmap(tempDir)
 
-        assertNotNull(icon)
-        assertEquals(ICON_SIZE_PX, icon.width)
-        assertEquals(ICON_SIZE_PX, icon.height)
+        // Should load the screenshot, NOT return the grey fallback
+        assertEquals(
+            "Provider must find automatic_screenshot.png in the project root",
+            Color.CYAN, bitmap.getPixel(100, 100)
+        )
     }
 
-    // --- Thumbnail missing, scene screenshot fallback ---
+    @Test
+    fun `loadSourceBitmap finds manual_screenshot in project root`() {
+        File(tempDir, "manual_screenshot.png").createNewFile()
+
+        val expected = createBitmap(200, 200, Color.MAGENTA)
+        val provider = ProjectLauncherIconProvider(decoderReturning(expected))
+
+        val bitmap = provider.loadSourceBitmap(tempDir)
+
+        assertEquals(
+            "Provider must find manual_screenshot.png in the project root",
+            Color.MAGENTA, bitmap.getPixel(100, 100)
+        )
+    }
 
     @Test
-    fun `getIconForProject returns icon from scene screenshot when thumbnail is missing`() {
-        val sceneDir = File(tempDir, "$SCENES_SUBDIR/Scene1/$SCREENSHOTS_SUBDIR")
+    fun `loadSourceBitmap finds screenshot in scene subdirectory`() {
+        // Scene screenshots live directly in {projectDir}/{sceneName}/
+        val sceneDir = File(tempDir, "Scene1")
         sceneDir.mkdirs()
-        File(sceneDir, "auto_screenshot.png").createNewFile()
+        File(sceneDir, "automatic_screenshot.png").createNewFile()
 
-        val sourceBitmap = createBitmap(320, 480)
-        val provider = ProjectLauncherIconProvider(decoderReturning(sourceBitmap))
+        val expected = createBitmap(200, 200, Color.YELLOW)
+        val provider = ProjectLauncherIconProvider(decoderReturning(expected))
 
-        val icon = provider.getIconForProject(tempDir)
+        val bitmap = provider.loadSourceBitmap(tempDir)
 
-        assertNotNull(icon)
-        assertEquals(ICON_SIZE_PX, icon.width)
-        assertEquals(ICON_SIZE_PX, icon.height)
+        assertEquals(
+            "Provider must find screenshot in scene subdirectory",
+            Color.YELLOW, bitmap.getPixel(100, 100)
+        )
     }
 
-    // --- Thumbnail missing, no screenshot → fallback ---
+    @Test
+    fun `loadSourceBitmap prefers manual over automatic screenshot`() {
+        File(tempDir, "manual_screenshot.png").createNewFile()
+        File(tempDir, "automatic_screenshot.png").createNewFile()
+
+        val manualBitmap = createBitmap(100, 100, Color.BLUE)
+        val provider = ProjectLauncherIconProvider(decoderReturning(manualBitmap))
+
+        val bitmap = provider.loadSourceBitmap(tempDir)
+
+        assertEquals(
+            "manual_screenshot.png should be preferred",
+            Color.BLUE, bitmap.getPixel(50, 50)
+        )
+    }
+
+    // ================================================================
+    // Existing tests — these still pass against the current code
+    // ================================================================
 
     @Test
-    fun `getIconForProject returns fallback icon when no thumbnail and no screenshot`() {
+    fun `getIconForProject returns fallback icon when no screenshots exist`() {
         val provider = ProjectLauncherIconProvider(decoderReturningNull())
 
         val icon = provider.getIconForProject(tempDir)
@@ -115,21 +152,6 @@ class ProjectLauncherIconProviderTest {
         assertEquals(ICON_SIZE_PX, icon.width)
         assertEquals(ICON_SIZE_PX, icon.height)
     }
-
-    @Test
-    fun `getIconForProject returns fallback when thumbnail file exists but decoder returns null`() {
-        File(tempDir, THUMBNAIL_FILE_NAME).createNewFile()
-
-        val provider = ProjectLauncherIconProvider(decoderReturningNull())
-
-        val icon = provider.getIconForProject(tempDir)
-
-        assertNotNull(icon)
-        assertEquals(ICON_SIZE_PX, icon.width)
-        assertEquals(ICON_SIZE_PX, icon.height)
-    }
-
-    // --- Scaling ---
 
     @Test
     fun `centreSquareCrop produces expected size from landscape source`() {
@@ -175,8 +197,6 @@ class ProjectLauncherIconProviderTest {
         assertEquals(ICON_SIZE_PX, cropped.height)
     }
 
-    // --- Odd dimensions ---
-
     @Test
     fun `centreSquareCrop does not crash on 1x1 bitmap`() {
         val source = createBitmap(1, 1)
@@ -221,8 +241,6 @@ class ProjectLauncherIconProviderTest {
         assertEquals(ICON_SIZE_PX, cropped.height)
     }
 
-    // --- Rounded corners ---
-
     @Test
     fun `applyRoundedCorners preserves dimensions`() {
         val source = createBitmap(ICON_SIZE_PX, ICON_SIZE_PX, Color.GREEN)
@@ -241,13 +259,10 @@ class ProjectLauncherIconProviderTest {
 
         val result = provider.applyRoundedCorners(source, 20f)
 
-        // The very top-left pixel (0,0) should be transparent after rounding
         val topLeftPixel = result.getPixel(0, 0)
         assertEquals("Top-left pixel should be transparent after rounding",
             0, Color.alpha(topLeftPixel))
     }
-
-    // --- Fallback bitmap ---
 
     @Test
     fun `createFallbackBitmap returns correct dimensions`() {
@@ -258,8 +273,6 @@ class ProjectLauncherIconProviderTest {
         assertEquals(ICON_SIZE_PX, fallback.width)
         assertEquals(ICON_SIZE_PX, fallback.height)
     }
-
-    // --- loadSourceBitmap edge cases ---
 
     @Test
     fun `loadSourceBitmap returns fallback for empty project directory`() {
@@ -280,56 +293,6 @@ class ProjectLauncherIconProviderTest {
         val bitmap = provider.loadSourceBitmap(nonExistent)
 
         assertNotNull(bitmap)
-        assertEquals(ICON_SIZE_PX, bitmap.width)
-    }
-
-    @Test
-    fun `loadSourceBitmap prefers thumbnail over scene screenshot`() {
-        File(tempDir, THUMBNAIL_FILE_NAME).createNewFile()
-        val sceneDir = File(tempDir, "$SCENES_SUBDIR/Scene1/$SCREENSHOTS_SUBDIR")
-        sceneDir.mkdirs()
-        File(sceneDir, "auto_screenshot.png").createNewFile()
-
-        val thumbnailBitmap = createBitmap(100, 100, Color.BLUE)
-        val provider = ProjectLauncherIconProvider(decoderReturning(thumbnailBitmap))
-
-        val bitmap = provider.loadSourceBitmap(tempDir)
-
-        // Should be the thumbnail bitmap (BLUE), not a fallback
-        assertEquals(Color.BLUE, bitmap.getPixel(50, 50))
-    }
-
-    @Test
-    fun `loadSourceBitmap falls back to scene screenshot when thumbnail decode fails`() {
-        File(tempDir, THUMBNAIL_FILE_NAME).createNewFile()
-        val sceneDir = File(tempDir, "$SCENES_SUBDIR/Scene1/$SCREENSHOTS_SUBDIR")
-        sceneDir.mkdirs()
-        File(sceneDir, "auto_screenshot.png").createNewFile()
-
-        var callCount = 0
-        val screenshotBitmap = createBitmap(200, 200, Color.GREEN)
-        val selectiveDecoder = ProjectLauncherIconProvider.BitmapDecoder { path ->
-            callCount++
-            if (callCount == 1) null else screenshotBitmap
-        }
-        val provider = ProjectLauncherIconProvider(selectiveDecoder)
-
-        val bitmap = provider.loadSourceBitmap(tempDir)
-
-        assertEquals(Color.GREEN, bitmap.getPixel(100, 100))
-    }
-
-    @Test
-    fun `loadSourceBitmap ignores non-png files in screenshots`() {
-        val sceneDir = File(tempDir, "$SCENES_SUBDIR/Scene1/$SCREENSHOTS_SUBDIR")
-        sceneDir.mkdirs()
-        File(sceneDir, "notes.txt").createNewFile() // not a .png
-
-        val provider = ProjectLauncherIconProvider(decoderReturningNull())
-
-        val bitmap = provider.loadSourceBitmap(tempDir)
-
-        // Should be fallback since no .png screenshot
         assertEquals(ICON_SIZE_PX, bitmap.width)
     }
 }
