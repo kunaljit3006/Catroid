@@ -27,6 +27,8 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider
 import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.ICON_SIZE_PX
+import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.SCREENSHOT_AUTOMATIC_FILE_NAME
+import org.catrobat.catroid.ui.launcher.ProjectLauncherIconProvider.Companion.SCREENSHOT_MANUAL_FILE_NAME
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -293,6 +295,117 @@ class ProjectLauncherIconProviderTest {
         val bitmap = provider.loadSourceBitmap(nonExistent)
 
         assertNotNull(bitmap)
+        assertEquals(ICON_SIZE_PX, bitmap.width)
+    }
+
+    @Test
+    fun `loadSourceBitmap falls through all stages when every decode returns null`() {
+        // Create all screenshot files at both project root and scene level
+        File(tempDir, SCREENSHOT_MANUAL_FILE_NAME).createNewFile()
+        File(tempDir, SCREENSHOT_AUTOMATIC_FILE_NAME).createNewFile()
+        val sceneDir = File(tempDir, "Scene1")
+        sceneDir.mkdirs()
+        File(sceneDir, SCREENSHOT_MANUAL_FILE_NAME).createNewFile()
+        File(sceneDir, SCREENSHOT_AUTOMATIC_FILE_NAME).createNewFile()
+
+        // Decoder always returns null → hits null branch of every ?.let
+        val provider = ProjectLauncherIconProvider(decoderReturningNull())
+
+        val bitmap = provider.loadSourceBitmap(tempDir)
+
+        // Must fall all the way through to fallback
+        assertEquals(ICON_SIZE_PX, bitmap.width)
+        assertEquals(ICON_SIZE_PX, bitmap.height)
+    }
+
+    @Test
+    fun `loadSourceBitmap scene manual decode fails falls to scene automatic`() {
+        val sceneDir = File(tempDir, "Scene1")
+        sceneDir.mkdirs()
+        File(sceneDir, SCREENSHOT_MANUAL_FILE_NAME).createNewFile()
+        File(sceneDir, SCREENSHOT_AUTOMATIC_FILE_NAME).createNewFile()
+
+        var callCount = 0
+        val sceneBitmap = createBitmap(200, 200, Color.GREEN)
+        val selectiveDecoder = ProjectLauncherIconProvider.BitmapDecoder { _ ->
+            callCount++
+            // First call is scene manual → return null; second is scene automatic → success
+            if (callCount == 1) null else sceneBitmap
+        }
+        val provider = ProjectLauncherIconProvider(selectiveDecoder)
+
+        val bitmap = provider.loadSourceBitmap(tempDir)
+
+        assertEquals(Color.GREEN, bitmap.getPixel(100, 100))
+    }
+
+    @Test
+    fun `default constructor uses BitmapFactory decoder`() {
+        // Create a file so the decode path is triggered via the default lambda
+        File(tempDir, SCREENSHOT_AUTOMATIC_FILE_NAME).createNewFile()
+
+        // Exercises the default BitmapDecoder lambda (BitmapFactory.decodeFile)
+        val provider = ProjectLauncherIconProvider()
+
+        // Robolectric's ShadowBitmapFactory returns a 100x100 dummy bitmap for empty files,
+        // which proves that the default BitmapDecoder lambda was successfully invoked.
+        val bitmap = provider.loadSourceBitmap(tempDir)
+
+        assertNotNull(bitmap)
+        assertEquals(100, bitmap.width)
+        assertEquals(100, bitmap.height)
+    }
+
+    @Test
+    fun `loadSourceBitmap handles listFiles returning null`() {
+        // Mockito often struggles to mock java.io.File completely under Robolectric/JDK 17.
+        // We use an anonymous subclass to guarantee listFiles returns null while isDirectory is true.
+        val badDir = object : File(tempDir, "badDir") {
+            override fun isDirectory() = true
+            override fun listFiles(): Array<File>? = null
+        }
+        
+        val provider = ProjectLauncherIconProvider()
+        
+        // This should not crash (handles files != null elegantly) and return fallback
+        val bitmap = provider.loadSourceBitmap(badDir)
+        assertEquals(ICON_SIZE_PX, bitmap.width)
+    }
+
+    @Test
+    fun `loadSourceBitmap successfully decodes manual screenshot in scene subdirectory`() {
+        val sceneDir = File(tempDir, "Scene1")
+        sceneDir.mkdirs()
+        File(sceneDir, SCREENSHOT_MANUAL_FILE_NAME).createNewFile()
+        
+        val provider = ProjectLauncherIconProvider { _ -> createBitmap(50, 50, Color.GREEN) }
+        val bitmap = provider.loadSourceBitmap(tempDir)
+        
+        assertEquals(Color.GREEN, bitmap.getPixel(25, 25))
+    }
+
+    @Test
+    fun `loadSourceBitmap falls back when scene directory exists but contains no automatic screenshot`() {
+        val sceneDir = File(tempDir, "Scene1")
+        sceneDir.mkdirs()
+        // No files in sceneDir
+
+        val provider = ProjectLauncherIconProvider()
+        val bitmap = provider.loadSourceBitmap(tempDir)
+        
+        assertEquals(ICON_SIZE_PX, bitmap.width)
+    }
+
+    @Test
+    fun `loadSourceBitmap ignores regular files during scene search`() {
+        // Create a regular file that is NOT a screenshot, so it gets skipped
+        File(tempDir, "random_file.txt").createNewFile()
+        // No scene directories exist
+
+        val provider = ProjectLauncherIconProvider()
+        val bitmap = provider.loadSourceBitmap(tempDir)
+        
+        // Loop encounters random_file.txt, it.isDirectory is false, loop finishes -> fallback
         assertEquals(ICON_SIZE_PX, bitmap.width)
     }
 }
