@@ -62,26 +62,34 @@ class ProjectLauncherIconProvider(
     }
 
     internal fun loadSourceBitmap(projectDir: File): Bitmap {
-        // 1. Try thumbnail.png
-        val thumbnailFile = File(projectDir, THUMBNAIL_FILE_NAME)
-        if (thumbnailFile.exists()) {
-            bitmapDecoder.decode(thumbnailFile.absolutePath)?.let { return it }
+        // 1. Try manual_screenshot.png in project root
+        val manualFile = File(projectDir, SCREENSHOT_MANUAL_FILE_NAME)
+        if (manualFile.exists()) {
+            bitmapDecoder.decode(manualFile.absolutePath)?.let { return it }
         }
 
-        // 2. Try first scene screenshot
-        val scenesDir = File(projectDir, SCENES_SUBDIR)
-        if (scenesDir.isDirectory) {
-            val firstScene = scenesDir.listFiles()?.firstOrNull { it.isDirectory }
+        // 2. Try automatic_screenshot.png in project root
+        val automaticFile = File(projectDir, SCREENSHOT_AUTOMATIC_FILE_NAME)
+        if (automaticFile.exists()) {
+            bitmapDecoder.decode(automaticFile.absolutePath)?.let { return it }
+        }
+
+        // 3. Try first scene sub-directory for screenshots
+        if (projectDir.isDirectory) {
+            val firstScene = projectDir.listFiles()?.firstOrNull { it.isDirectory }
             if (firstScene != null) {
-                val screenshotDir = File(firstScene, SCREENSHOTS_SUBDIR)
-                val screenshot = screenshotDir.listFiles()?.firstOrNull { it.name.endsWith(".png") }
-                if (screenshot != null) {
-                    bitmapDecoder.decode(screenshot.absolutePath)?.let { return it }
+                val sceneManual = File(firstScene, SCREENSHOT_MANUAL_FILE_NAME)
+                if (sceneManual.exists()) {
+                    bitmapDecoder.decode(sceneManual.absolutePath)?.let { return it }
+                }
+                val sceneAutomatic = File(firstScene, SCREENSHOT_AUTOMATIC_FILE_NAME)
+                if (sceneAutomatic.exists()) {
+                    bitmapDecoder.decode(sceneAutomatic.absolutePath)?.let { return it }
                 }
             }
         }
 
-        // 3. Fallback
+        // 4. Fallback
         return createFallbackBitmap()
     }
 
@@ -135,8 +143,7 @@ class ProjectLauncherIconProvider(
     companion object {
         const val ICON_SIZE_PX = 160
         const val CORNER_RADIUS_PX = 20f
-        const val THUMBNAIL_FILE_NAME = "thumbnail.png"
-        const val SCENES_SUBDIR = "scenes"
-        const val SCREENSHOTS_SUBDIR = "screenshots"
+        const val SCREENSHOT_AUTOMATIC_FILE_NAME = "automatic_screenshot.png"
+        const val SCREENSHOT_MANUAL_FILE_NAME = "manual_screenshot.png"
     }
 }
